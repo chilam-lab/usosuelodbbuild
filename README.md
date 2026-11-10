@@ -13,7 +13,7 @@ Este módulo genera y carga en PostGIS:
 
 Automatizar un pipeline ETL para uso de suelo, con el mismo contrato de servicios que DEM y WorldClim:
 1. descarga y descompresión del shapefile nacional de INEGI,
-2. carga a PostGIS reproyectando a EPSG:4326 y corrigiendo geometrías inválidas,
+2. carga a PostGIS reproyectando a EPSG:4326, corrigiendo geometrías inválidas y **recortando al borde terrestre** (`aoi_extent.shp`, el mismo AOI con que se recortan WorldClim y DEM),
 3. catálogo de clases a partir de `CLAVE` / `DESCRIPCIO`,
 4. enlace de cada polígono con su clase,
 5. cálculo de `available_grids` por cruce espacial con mallas/regiones,
@@ -25,6 +25,7 @@ Automatizar un pipeline ETL para uso de suelo, con el mismo contrato de servicio
 - Ficha: https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=889463842781
 - Descarga (SHP, ~294 MB): `889463842781_s.zip`, contiene `conjunto_de_datos/cdv_usuev250sVII_cnal.shp`.
 - 179,099 polígonos, 183 clases (`CLAVE`), proyección cónica conforme de Lambert (ITRF2008).
+- El shape trae el **mar como `H2O` (CUERPO DE AGUA)**: ~1.18 millones de km² en 4 polígonos (Pacífico, Golfo/Caribe y alrededor de Revillagigedo y Guadalupe). Como SPECIES no analiza en el mar y las mallas solo contemplan áreas terrestres, el build recorta todo al borde terrestre; `H2O` queda solo con agua continental.
 
 ## Estructura
 
@@ -34,6 +35,7 @@ dbbuild/
 ├── precompute_usv_cells.py         # Precálculo de celdas por clase y malla (usv_cells)
 ├── .env                            # Variables de conexión (usv_db y meshandregions_db)
 ├── data/
+│   ├── aoi_extent.shp              # Borde terrestre de América (copiado de worldclimdbbuild)
 │   └── input/
 │       ├── 889463842781_s.zip      # Zip de INEGI (se descarga con --download)
 │       └── conjunto_de_datos/      # Shapefile extraído
@@ -41,7 +43,8 @@ dbbuild/
     ├── 01_init_usv_db.sql          # Esquema base (tablas USV)
     ├── 02_create_mesh_fdw.sql      # FDW a meshandregions_db
     ├── 03_update_available_grids.sql # Cálculo de available_grids
-    └── 04_create_usv_cells.sql     # Tabla de celdas precalculadas
+    ├── 04_create_usv_cells.sql     # Tabla de celdas precalculadas
+    └── 05_clip_to_land.sql         # Recorte al borde terrestre
 middleware_usosuelo/                # Servicios SPECIES v3 (ver su README)
 ```
 
@@ -50,7 +53,9 @@ middleware_usosuelo/                # Servicios SPECIES v3 (ver su README)
 - `usv_data_source_info`: metadatos de la fuente de datos.
 - `usv_source_vars`: una fila por serie (`source_code`, `series`, `level_size`, `available_grids`, `filter_fields`).
 - `usv_categories`: clases de uso de suelo (`clave`, `label`, `grupo`, `cat_index`, `n_polygons`, `area_km2`). Los ids empiezan en 500000 y se conservan entre corridas (se actualizan por `clave`).
-- `usv_serie_vii`: polígonos de la serie con `category_id` hacia `usv_categories`.
+- `usv_serie_vii_raw`: shape tal cual (incluye el mar); solo como insumo del recorte.
+- `usv_aoi` / `usv_aoi_parts`: borde terrestre y su versión subdividida para el índice espacial.
+- `usv_serie_vii`: polígonos recortados a tierra, con `category_id` hacia `usv_categories`.
 - `usv_cells`: celdas por clase (`cid`) y malla (`grid_id`).
 
 ### Clases y grupos
