@@ -292,11 +292,17 @@ exports.get_variable_byid = async function (req, res) {
               continue;
             }
 
-            orParts.push(`lower(c.clave) = lower($${paramIdx})`);
+            // Si el valor es una CLAVE exacta ("TA") solo trae esa clase; el
+            // texto se busca únicamente cuando no lo es ("ta" dentro de
+            // "VEGETACIÓN" traería casi todas).
+            const claveIdx = paramIdx;
             values.push(trimmed);
             paramIdx += 1;
+            orParts.push(`lower(c.clave) = lower($${claveIdx})`);
 
-            orParts.push(`unaccent_label(c.label) ILIKE unaccent_label($${paramIdx})`);
+            orParts.push(`(NOT EXISTS (SELECT 1 FROM usv_categories k
+                                      WHERE k.source_var_id = c.source_var_id AND lower(k.clave) = lower($${claveIdx}))
+                          AND unaccent_label(c.label) ILIKE unaccent_label($${paramIdx}))`);
             values.push(`%${trimmed}%`);
             paramIdx += 1;
           }
