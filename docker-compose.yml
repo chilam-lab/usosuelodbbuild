@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  usosuelo-middleware:
+    container_name: middleware_usosuelo
+    build:
+      context: ./middleware_usosuelo
+      dockerfile: Dockerfile
+    ports:
+      - "8899:8080"
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT:-8080}
+      DBHOST: ${DBHOST}
+      DBPORT: ${DBPORT:-5432}
+      DBNAME: ${DBNAME:-usv_db}
+      DBUSER: ${DBUSER}
+      DBPWD: ${DBPWD}
+      DBHOST_MALLAS: ${DBHOST_MALLAS}
+      DBPORT_MALLAS: ${DBPORT_MALLAS:-5432}
+      DBNAME_MALLAS: ${DBNAME_MALLAS:-meshandregions_db}
+      DBUSER_MALLAS: ${DBUSER_MALLAS}
+      DBPWD_MALLAS: ${DBPWD_MALLAS}
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-5000}
+      DB_IDLE_TIMEOUT_MS: ${DB_IDLE_TIMEOUT_MS:-30000}
+      DB_QUERY_TIMEOUT_MS: ${DB_QUERY_TIMEOUT_MS:-60000}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-60000}
