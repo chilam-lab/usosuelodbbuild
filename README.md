@@ -67,7 +67,16 @@ middleware_usosuelo/                # Servicios SPECIES v3 (ver su README)
 
 ## Ejecución
 
-Desde la carpeta `dbbuild`:
+El build corre en local y se conecta a las bases remotas (manati). Preparación, una sola vez:
+
+```bash
+sudo apt install gdal-bin                       # ogr2ogr
+python3 -m venv .venv                           # en la raíz del repo
+.venv/bin/pip install psycopg2-binary python-dotenv
+cp dbbuild/.env.example dbbuild/.env            # credenciales de usv_db y meshandregions_db
+```
+
+Desde la carpeta `dbbuild` (con el venv activado: `source ../.venv/bin/activate`):
 
 ```bash
 python3 build_usvdb.py --dry-run
