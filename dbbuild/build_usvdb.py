@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Script ETL para Uso del Suelo y Vegetación (INEGI, escala 1:250 000):
 # 1) descarga/descomprime el shapefile nacional de la serie,
-# 2) lo carga a PostGIS reproyectado a EPSG:4326 (usv_{serie}),
+# 2) lo carga a PostGIS reproyectado a EPSG:4326 y lo recorta al borde terrestre
+#    (aoi_extent, mismo AOI que WorldClim/DEM; el shape trae el mar como agua) en usv_{serie},
 # 3) genera el catálogo de clases (usv_categories) a partir de CLAVE/DESCRIPCIO,
 # 4) enlaza cada polígono con su clase y calcula available_grids,
 # 5) precalcula las celdas por clase y malla (usv_cells).
@@ -27,6 +28,9 @@ INPUT_ZIP = INPUT_DIR / "889463842781_s.zip"
 INPUT_SHAPEFILE = INPUT_DIR / "conjunto_de_datos" / "cdv_usuev250sVII_cnal.shp"
 SHAPE_CLAVE_FIELD = "clave"
 SHAPE_DESC_FIELD = "descripcio"
+# Borde terrestre (Américas) con que se recortan WorldClim y DEM.
+AOI_SHAPEFILE = DATA_DIR / "aoi_extent.shp"
+AOI_TABLE = "usv_aoi"
 
 # Metadatos que se guardan en catálogo de la DB.
 SOURCE_CODE = "inegi_usv_250k_serie_vii"
@@ -52,6 +56,7 @@ CATEGORY_ID_START = 500000
 
 CREATE_MESH_FDW_SQL = SQL_DIR / "02_create_mesh_fdw.sql"
 UPDATE_AVAILABLE_GRIDS_SQL = SQL_DIR / "03_update_available_grids.sql"
+CLIP_TO_LAND_SQL = SQL_DIR / "05_clip_to_land.sql"
 
 # Prefijos de vegetación secundaria: la DESCRIPCIO del shape viene truncada a
 # 70 caracteres en algunas de estas clases, así que su etiqueta se arma con la
@@ -116,6 +121,11 @@ def load_sql(path: Path) -> str:
 
 def table_name() -> str:
     return f"usv_{SERIES}"
+
+
+def raw_table_name() -> str:
+    # Shape tal cual lo carga ogr2ogr, antes del recorte terrestre.
+    return f"{table_name()}_raw"
 
 
 def category_group(clave: str) -> str:
@@ -193,8 +203,8 @@ def init_db(logger: logging.Logger) -> None:
     logger.info("DB initialized")
 
 
-def load_shapefile_to_postgis(logger: logging.Logger) -> str:
-    # Carga el shapefile como tabla PostGIS reproyectada a EPSG:4326.
+def ogr_load(shapefile: Path, table: str, logger: logging.Logger, geom_name: str = "the_geom") -> None:
+    # Carga un shapefile como tabla PostGIS en EPSG:4326.
     params = db_params()
     pg_conn = " ".join(f"{k}={v}" for k, v in params.items())
     run_cmd(
@@ -203,15 +213,15 @@ def load_shapefile_to_postgis(logger: logging.Logger) -> str:
             "-f",
             "PostgreSQL",
             f"PG:{pg_conn}",
-            str(INPUT_SHAPEFILE),
+            str(shapefile),
             "-nln",
-            table_name(),
+            table,
             "-overwrite",
             "-t_srs",
             "EPSG:4326",
             "-makevalid",
             "-lco",
-            "GEOMETRY_NAME=the_geom",
+            f"GEOMETRY_NAME={geom_name}",
             "-lco",
             "FID=id",
             "-lco",
@@ -225,7 +235,26 @@ def load_shapefile_to_postgis(logger: logging.Logger) -> str:
         logger,
         secret=params["password"],
     )
-    logger.info("Shapefile loaded in table: %s", table_name())
+    logger.info("Shapefile loaded in table: %s", table)
+
+
+def load_shapefile_to_postgis(logger: logging.Logger) -> str:
+    # Carga el shape de INEGI y el AOI terrestre, y recorta el primero con el segundo.
+    if not AOI_SHAPEFILE.exists():
+        raise FileNotFoundError(f"AOI shapefile not found: {AOI_SHAPEFILE}")
+    ogr_load(INPUT_SHAPEFILE, raw_table_name(), logger)
+    ogr_load(AOI_SHAPEFILE, AOI_TABLE, logger, geom_name="geom")
+
+    clip_sql = load_sql(CLIP_TO_LAND_SQL)
+    clip_sql = clip_sql.replace("__RAW_TABLE__", raw_table_name())
+    clip_sql = clip_sql.replace("__AOI_TABLE__", AOI_TABLE)
+    clip_sql = clip_sql.replace("__USV_TABLE__", table_name())
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(clip_sql)
+            cur.execute(f"SELECT (SELECT count(*) FROM {raw_table_name()}), (SELECT count(*) FROM {table_name()})")
+            n_raw, n_land = cur.fetchone()
+    logger.info("Clipped to land: %s -> %s polygons in table: %s", n_raw, n_land, table_name())
     return table_name()
 
 
