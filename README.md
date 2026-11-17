@@ -24,7 +24,7 @@ Automatizar un pipeline ETL para uso de suelo, con el mismo contrato de servicio
 - Producto: *Conjunto de datos vectoriales de uso del suelo y vegetación. Escala 1:250 000. Serie VII. Conjunto Nacional* (INEGI, edición 2018).
 - Ficha: https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=889463842781
 - Descarga (SHP, ~294 MB): `889463842781_s.zip`, contiene `conjunto_de_datos/cdv_usuev250sVII_cnal.shp`.
-- 179,099 polígonos, 183 clases (`CLAVE`), proyección cónica conforme de Lambert (ITRF2008).
+- 179,099 polígonos, 183 clases (`CLAVE`), proyección cónica equivalente de Albers (GRS80).
 - El shape trae el **mar como `H2O` (CUERPO DE AGUA)**: ~1.18 millones de km² en 4 polígonos (Pacífico, Golfo/Caribe y alrededor de Revillagigedo y Guadalupe). Como SPECIES no analiza en el mar y las mallas solo contemplan áreas terrestres, el build recorta todo al borde terrestre; `H2O` queda solo con agua continental.
 
 ## Estructura
